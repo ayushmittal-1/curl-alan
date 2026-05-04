@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alan - AI Generator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0a0a0b;
+    color: #e4e4e7;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 640px;
+    padding: 60px 20px 40px;
+  }
+
+  h1 {
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+    margin-bottom: 6px;
+  }
+
+  .subtitle {
+    color: #71717a;
+    font-size: 14px;
+    margin-bottom: 40px;
+  }
+
+  /* Drop Zone */
+  .drop-zone {
+    border: 2px dashed #27272a;
+    border-radius: 16px;
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: #a78bfa;
+    background: rgba(167, 139, 250, 0.04);
+  }
+
+  .drop-zone.has-image {
+    padding: 0;
+    border-style: solid;
+    border-color: #27272a;
+  }
+
+  .drop-zone-content { pointer-events: none; }
+
+  .drop-icon {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 16px;
+    border-radius: 12px;
+    background: #18181b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .drop-icon svg { color: #71717a; }
+
+  .drop-zone p { font-size: 14px; color: #a1a1aa; line-height: 1.6; }
+  .drop-zone p strong { color: #a78bfa; }
+
+  .drop-zone img {
+    width: 100%;
+    display: block;
+    border-radius: 14px;
+  }
+
+  .drop-zone .remove-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(8px);
+    border: 1px solid #27272a;
+    color: #e4e4e7;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: all;
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .remove-btn:hover { background: rgba(239,68,68,0.5); }
+
+  /* URL input */
+  .url-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+  }
+
+  .url-row input {
+    flex: 1;
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-radius: 10px;
+    padding: 12px 16px;
+    color: #e4e4e7;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .url-row input:focus { border-color: #a78bfa; }
+  .url-row input::placeholder { color: #52525b; }
+
+  .url-row button {
+    background: #27272a;
+    border: 1px solid #3f3f46;
+    border-radius: 10px;
+    padding: 0 16px;
+    color: #a1a1aa;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: all 0.2s;
+  }
+
+  .url-row button:hover { background: #3f3f46; color: #e4e4e7; }
+
+  /* Prompt */
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: #a1a1aa;
+    margin-bottom: 8px;
+  }
+
+  textarea {
+    width: 100%;
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-radius: 12px;
+    padding: 14px 16px;
+    color: #e4e4e7;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 88px;
+    outline: none;
+    transition: border-color 0.2s;
+    margin-bottom: 24px;
+  }
+
+  textarea:focus { border-color: #a78bfa; }
+  textarea::placeholder { color: #52525b; }
+
+  /* Settings row */
+  .settings-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+
+  .setting {
+    flex: 1;
+  }
+
+  select {
+    width: 100%;
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: #e4e4e7;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2371717a' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+  }
+
+  select:focus { border-color: #a78bfa; }
+
+  /* Generate button */
+  .generate-btn {
+    width: 100%;
+    padding: 14px;
+    border-radius: 12px;
+    border: none;
+    background: #7c3aed;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: -0.2px;
+  }
+
+  .generate-btn:hover { background: #6d28d9; }
+  .generate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Status */
+  .status {
+    margin-top: 24px;
+    border-radius: 12px;
+    background: #18181b;
+    border: 1px solid #27272a;
+    padding: 20px;
+    display: none;
+  }
+
+  .status.visible { display: block; }
+
+  .status-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+
+  .status-label {
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .status-sub {
+    font-size: 12px;
+    color: #52525b;
+    margin-bottom: 14px;
+  }
+
+  .progress-bar {
+    height: 4px;
+    background: #27272a;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: #a78bfa;
+    border-radius: 4px;
+    width: 0%;
+    transition: width 0.5s ease;
+  }
+
+  /* Spinner */
+  .spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #3f3f46;
+    border-top-color: #a78bfa;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Result */
+  .result {
+    margin-top: 24px;
+    display: none;
+  }
+
+  .result.visible { display: block; }
+
+  .result video {
+    width: 100%;
+    border-radius: 14px;
+    border: 1px solid #27272a;
+    background: #000;
+  }
+
+  .result-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .result-actions a, .result-actions button {
+    flex: 1;
+    padding: 10px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: inherit;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-download {
+    background: #7c3aed;
+    color: #fff;
+    border: none;
+  }
+  .btn-download:hover { background: #6d28d9; }
+
+  .btn-new {
+    background: #18181b;
+    border: 1px solid #27272a;
+    color: #a1a1aa;
+  }
+  .btn-new:hover { background: #27272a; color: #e4e4e7; }
+
+  /* Error */
+  .error {
+    margin-top: 16px;
+    padding: 14px 16px;
+    background: rgba(239,68,68,0.08);
+    border: 1px solid rgba(239,68,68,0.2);
+    border-radius: 10px;
+    color: #fca5a5;
+    font-size: 13px;
+    display: none;
+  }
+
+  .error.visible { display: block; }
+
+  /* Checkmark */
+  .check-icon {
+    width: 16px;
+    height: 16px;
+    color: #4ade80;
+    flex-shrink: 0;
+  }
+
+  /* Mode tabs */
+  .mode-tabs {
+    display: flex;
+    gap: 4px;
+    background: #18181b;
+    border-radius: 12px;
+    padding: 4px;
+    margin-bottom: 32px;
+    border: 1px solid #27272a;
+  }
+
+  .mode-tab {
+    flex: 1;
+    padding: 10px 16px;
+    border-radius: 9px;
+    border: none;
+    background: transparent;
+    color: #71717a;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .mode-tab.active {
+    background: #27272a;
+    color: #e4e4e7;
+  }
+
+  .mode-tab:hover:not(.active) {
+    color: #a1a1aa;
+  }
+
+  /* Result image */
+  .result img.generated-img {
+    width: 100%;
+    border-radius: 14px;
+    border: 1px solid #27272a;
+    background: #000;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Alan</h1>
+  <p class="subtitle" id="subtitleText">Image to video, powered by Wan2.1</p>
+
+  <!-- Mode tabs -->
+  <div class="mode-tabs">
+    <button class="mode-tab active" data-mode="video" onclick="switchMode('video')">Image to Video</button>
+    <button class="mode-tab" data-mode="image" onclick="switchMode('image')">Text to Image</button>
+  </div>
+
+  <!-- Drop zone (video mode only) -->
+  <div class="drop-zone" id="dropZone" data-video-only>
+    <div class="drop-zone-content" id="dropContent">
+      <div class="drop-icon">
+        <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z"/>
+        </svg>
+      </div>
+      <p><strong>Drop an image</strong> or click to upload<br>or paste a URL below</p>
+    </div>
+  </div>
+
+  <input type="file" id="fileInput" accept="image/*" hidden>
+
+  <!-- URL input (video mode only) -->
+  <div class="url-row" id="urlRow" data-video-only>
+    <input type="text" id="urlInput" placeholder="https://example.com/image.jpg">
+    <button id="urlBtn" onclick="loadUrl()">Load URL</button>
+  </div>
+
+  <!-- Prompt -->
+  <label for="prompt" id="promptLabel">Prompt</label>
+  <textarea id="prompt" placeholder="Describe the motion you want..."></textarea>
+
+  <!-- Video Settings -->
+  <div class="settings-row" id="videoSettings" data-video-only>
+    <div class="setting">
+      <label for="model">Model</label>
+      <select id="model">
+        <option value="wan2.1-i2v-plus">Wan2.1 I2V Plus</option>
+        <option value="wan2.1-i2v-turbo">Wan2.1 I2V Turbo</option>
+      </select>
+    </div>
+    <div class="setting">
+      <label for="resolution">Resolution</label>
+      <select id="resolution">
+        <option value="720P">720p</option>
+        <option value="480P">480p</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Image Settings -->
+  <div class="settings-row" id="imageSettings" data-image-only style="display:none;">
+    <div class="setting">
+      <label for="imgSize">Size</label>
+      <select id="imgSize">
+        <option value="2K">2K (2048x2048)</option>
+        <option value="1024*1024">1024x1024</option>
+        <option value="720*1280">720x1280</option>
+        <option value="1280*720">1280x720</option>
+      </select>
+    </div>
+    <div class="setting">
+      <label for="imgCount">Images</label>
+      <select id="imgCount">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="4">4</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Generate -->
+  <button class="generate-btn" id="generateBtn" onclick="generate()" disabled>Generate Video</button>
+
+  <!-- Error -->
+  <div class="error" id="error"></div>
+
+  <!-- Status -->
+  <div class="status" id="status">
+    <div class="status-header">
+      <div class="spinner" id="statusSpinner"></div>
+      <svg class="check-icon" id="statusCheck" style="display:none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+      </svg>
+      <span class="status-label" id="statusLabel">Submitting...</span>
+    </div>
+    <div class="status-sub" id="statusSub"></div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+
+  <!-- Result -->
+  <div class="result" id="result">
+    <video controls autoplay loop id="videoPlayer"></video>
+    <div id="imageResults"></div>
+    <div class="result-actions">
+      <a class="btn-download" id="downloadLink" download="alan-video.mp4">Download</a>
+      <button class="btn-new" id="newBtn" onclick="reset()">New Video</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const BASE = '';
+
+let imageUrl = '';
+let currentMode = 'video'; // 'video' or 'image'
+
+// DOM
+const dropZone = document.getElementById('dropZone');
+const dropContent = document.getElementById('dropContent');
+const fileInput = document.getElementById('fileInput');
+const urlInput = document.getElementById('urlInput');
+const generateBtn = document.getElementById('generateBtn');
+const statusEl = document.getElementById('status');
+const statusLabel = document.getElementById('statusLabel');
+const statusSub = document.getElementById('statusSub');
+const statusSpinner = document.getElementById('statusSpinner');
+const statusCheck = document.getElementById('statusCheck');
+const progressFill = document.getElementById('progressFill');
+const resultEl = document.getElementById('result');
+const videoPlayer = document.getElementById('videoPlayer');
+const downloadLink = document.getElementById('downloadLink');
+const errorEl = document.getElementById('error');
+
+// Drop zone
+dropZone.addEventListener('click', () => {
+  if (!imageUrl) fileInput.click();
+});
+
+dropZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  dropZone.classList.add('dragover');
+});
+
+dropZone.addEventListener('dragleave', () => {
+  dropZone.classList.remove('dragover');
+});
+
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+
+  // Check for dropped URL text
+  const text = e.dataTransfer.getData('text/plain');
+  if (text && (text.startsWith('http://') || text.startsWith('https://'))) {
+    setImageUrl(text);
+    return;
+  }
+
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) {
+    uploadToPreview(file);
+  }
+});
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) uploadToPreview(fileInput.files[0]);
+});
+
+function uploadToPreview(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    // For local files, we show the preview but need a public URL
+    // We'll use the data URL for preview but prompt user for a public URL
+    showPreview(reader.result);
+    // We can't use data URLs with the API - user needs to provide a public URL
+    imageUrl = '';
+    urlInput.value = '';
+    urlInput.placeholder = 'Paste a public URL for this image...';
+    urlInput.focus();
+    updateBtn();
+  };
+  reader.readAsDataURL(file);
+}
+
+function setImageUrl(url) {
+  imageUrl = url.trim();
+  urlInput.value = imageUrl;
+  showPreview(imageUrl);
+  updateBtn();
+}
+
+function showPreview(src) {
+  dropZone.classList.add('has-image');
+  dropContent.innerHTML = `
+    <img src="${src}" alt="Preview" onerror="clearPreview()">
+    <button class="remove-btn" onclick="event.stopPropagation(); clearImage();">&times;</button>
+  `;
+}
+
+function clearImage() {
+  imageUrl = '';
+  urlInput.value = '';
+  urlInput.placeholder = 'https://example.com/image.jpg';
+  clearPreview();
+  updateBtn();
+}
+
+function clearPreview() {
+  dropZone.classList.remove('has-image');
+  dropContent.innerHTML = `
+    <div class="drop-icon">
+      <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z"/>
+      </svg>
+    </div>
+    <p><strong>Drop an image</strong> or click to upload<br>or paste a URL below</p>
+  `;
+}
+
+function loadUrl() {
+  const url = urlInput.value.trim();
+  if (!url) return;
+  setImageUrl(url);
+}
+
+urlInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') loadUrl();
+});
+
+urlInput.addEventListener('input', () => {
+  const v = urlInput.value.trim();
+  if (v && (v.startsWith('http://') || v.startsWith('https://'))) {
+    imageUrl = v;
+  } else {
+    imageUrl = '';
+  }
+  updateBtn();
+});
+
+function updateBtn() {
+  if (currentMode === 'video') {
+    generateBtn.disabled = !imageUrl;
+  } else {
+    generateBtn.disabled = !document.getElementById('prompt').value.trim();
+  }
+}
+
+function switchMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.mode === mode);
+  });
+
+  const videoOnly = document.querySelectorAll('[data-video-only]');
+  const imageOnly = document.querySelectorAll('[data-image-only]');
+
+  videoOnly.forEach(el => el.style.display = mode === 'video' ? '' : 'none');
+  imageOnly.forEach(el => el.style.display = mode === 'image' ? '' : 'none');
+
+  const prompt = document.getElementById('prompt');
+  const subtitleText = document.getElementById('subtitleText');
+
+  if (mode === 'video') {
+    prompt.placeholder = 'Describe the motion you want...';
+    document.getElementById('promptLabel').textContent = 'Prompt';
+    generateBtn.textContent = 'Generate Video';
+    subtitleText.textContent = 'Image to video, powered by Wan2.1';
+  } else {
+    prompt.placeholder = 'A young woman with silver hair sitting by a rain-streaked window, cinematic color grading, ultra-detailed, 8k resolution';
+    document.getElementById('promptLabel').textContent = 'Prompt';
+    generateBtn.textContent = 'Generate Image';
+    subtitleText.textContent = 'Text to image, powered by Wan2.7';
+  }
+
+  // Reset state
+  statusEl.classList.remove('visible');
+  resultEl.classList.remove('visible');
+  hideError();
+  updateBtn();
+}
+
+// Prompt input to enable button in image mode
+document.getElementById('prompt').addEventListener('input', () => {
+  if (currentMode === 'image') updateBtn();
+});
+
+// Paste image URL from clipboard
+document.addEventListener('paste', e => {
+  const text = (e.clipboardData || window.clipboardData).getData('text');
+  if (text && (text.startsWith('http://') || text.startsWith('https://')) && document.activeElement !== document.getElementById('prompt')) {
+    setImageUrl(text);
+    e.preventDefault();
+  }
+});
+
+function showError(msg) {
+  errorEl.textContent = msg;
+  errorEl.classList.add('visible');
+}
+
+function hideError() {
+  errorEl.classList.remove('visible');
+}
+
+// Generate
+async function generate() {
+  hideError();
+  resultEl.classList.remove('visible');
+
+  const prompt = document.getElementById('prompt').value.trim();
+
+  generateBtn.disabled = true;
+  statusEl.classList.add('visible');
+  statusSpinner.style.display = 'block';
+  statusCheck.style.display = 'none';
+  statusLabel.textContent = 'Submitting...';
+  statusSub.textContent = '';
+  progressFill.style.width = '5%';
+
+  try {
+    let apiUrl, body;
+
+    if (currentMode === 'video') {
+      const model = document.getElementById('model').value;
+      const resolution = document.getElementById('resolution').value;
+      if (!imageUrl) return;
+
+      apiUrl = `${BASE}/api/generate`;
+      body = {
+        model,
+        input: {
+          prompt: prompt || 'Animate this image with natural motion',
+          img_url: imageUrl
+        },
+        parameters: { resolution }
+      };
+    } else {
+      const size = document.getElementById('imgSize').value;
+      const n = parseInt(document.getElementById('imgCount').value);
+      if (!prompt) return;
+
+      apiUrl = `${BASE}/api/generate-image`;
+      body = {
+        model: 'wan2.7-image-pro',
+        input: {
+          messages: [
+            {
+              role: 'user',
+              content: [{ text: prompt }]
+            }
+          ]
+        },
+        parameters: {
+          size,
+          n,
+          watermark: false,
+          thinking_mode: true
+        }
+      };
+    }
+
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || !data.output?.task_id) {
+      throw new Error(data.message || data.output?.message || 'Failed to submit job');
+    }
+
+    const taskId = data.output.task_id;
+    statusLabel.textContent = 'Queued';
+    statusSub.textContent = `Task ${taskId.slice(0, 8)}...`;
+    progressFill.style.width = '10%';
+
+    await poll(taskId);
+
+  } catch (err) {
+    showError(err.message);
+    statusEl.classList.remove('visible');
+    generateBtn.disabled = false;
+  }
+}
+
+async function poll(taskId) {
+  const startTime = Date.now();
+
+  const tick = async () => {
+    try {
+      const res = await fetch(`${BASE}/api/tasks/${taskId}`);
+
+      const data = await res.json();
+      const s = data.output?.task_status;
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      const mins = Math.floor(elapsed / 60);
+      const secs = elapsed % 60;
+      const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+
+      if (s === 'PENDING') {
+        statusLabel.textContent = 'Queued';
+        statusSub.textContent = `Waiting in queue... ${timeStr}`;
+        progressFill.style.width = '15%';
+      } else if (s === 'RUNNING') {
+        statusLabel.textContent = 'Generating';
+        const what = currentMode === 'video' ? 'Rendering video' : 'Generating image';
+        statusSub.textContent = `${what}... ${timeStr}`;
+        const p = Math.min(15 + elapsed * 0.8, 85);
+        progressFill.style.width = p + '%';
+      } else if (s === 'SUCCEEDED') {
+        statusLabel.textContent = 'Done';
+        statusSub.textContent = `Completed in ${timeStr}`;
+        progressFill.style.width = '100%';
+        statusSpinner.style.display = 'none';
+        statusCheck.style.display = 'block';
+
+        if (currentMode === 'video') {
+          const videoUrl = data.output.video_url || data.output.results?.[0]?.url;
+          if (videoUrl) {
+            videoPlayer.style.display = '';
+            document.getElementById('imageResults').innerHTML = '';
+            videoPlayer.src = videoUrl;
+            downloadLink.href = videoUrl;
+            downloadLink.download = 'alan-video.mp4';
+            downloadLink.textContent = 'Download';
+            document.getElementById('newBtn').textContent = 'New Video';
+            resultEl.classList.add('visible');
+          }
+        } else {
+          // Image mode: extract images from choices
+          const choices = data.output.choices || [];
+          const images = [];
+          for (const choice of choices) {
+            const content = choice.message?.content || [];
+            for (const item of content) {
+              if (item.image) images.push(item.image);
+            }
+          }
+
+          if (images.length > 0) {
+            videoPlayer.style.display = 'none';
+            const container = document.getElementById('imageResults');
+            container.innerHTML = images.map(url =>
+              `<img class="generated-img" src="${url}" alt="Generated image">`
+            ).join('');
+            downloadLink.href = images[0];
+            downloadLink.download = 'alan-image.png';
+            downloadLink.textContent = images.length > 1 ? 'Download First' : 'Download';
+            document.getElementById('newBtn').textContent = 'New Image';
+            resultEl.classList.add('visible');
+          }
+        }
+        generateBtn.disabled = false;
+        return;
+      } else if (s === 'FAILED') {
+        throw new Error(data.output?.message || 'Video generation failed');
+      }
+
+      setTimeout(tick, 7000);
+    } catch (err) {
+      showError(err.message);
+      statusEl.classList.remove('visible');
+      generateBtn.disabled = false;
+    }
+  };
+
+  tick();
+}
+
+function reset() {
+  clearImage();
+  document.getElementById('prompt').value = '';
+  statusEl.classList.remove('visible');
+  resultEl.classList.remove('visible');
+  hideError();
+  progressFill.style.width = '0%';
+  videoPlayer.style.display = '';
+  document.getElementById('imageResults').innerHTML = '';
+  updateBtn();
+}
+</script>
+</body>
+</html>
