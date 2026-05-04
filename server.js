@@ -3,7 +3,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const PORT = 3333;
+const PORT = process.env.PORT || 3333;
 const API_KEY = 'sk-2546bad4f1654c208c55637bd8d81255';
 const API_HOST = 'dashscope-intl.aliyuncs.com';
 
