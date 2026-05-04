@@ -1,0 +1,10 @@
+services:
+  - type: web
+    runtime: node
+    name: curl-alan
+    repo: https://github.com/ayushmittal-1/curl-alan.git
+    branch: master
+    buildCommand: ""
+    startCommand: node server.js
+    plan: free
+    envVars: []
