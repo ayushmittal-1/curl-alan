@@ -362,16 +362,19 @@
 
   .mode-tab {
     flex: 1;
-    padding: 10px 16px;
+    padding: 10px 12px;
     border-radius: 9px;
     border: none;
     background: transparent;
     color: #71717a;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
     font-family: inherit;
     cursor: pointer;
     transition: all 0.2s;
+    white-space: nowrap;
+    position: relative;
+    z-index: 1;
   }
 
   .mode-tab.active {
@@ -656,10 +659,10 @@
 <script>
 const BASE = '';
 
-// Supabase
+// Supabase (optional — app works without it)
 const SUPABASE_URL = 'https://qjavmntfobozbyzzysze.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqYXZtbnRmb2JvemJ5enp5c3plIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4NzY3ODAsImV4cCI6MjA5MzQ1Mjc4MH0.Ir9Ah2ZTzNb3vQQQIlt86sDbP_rmcttqaGuwG4Mb7TM';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   db: { schema: 'public' }
 });
 
@@ -939,7 +942,7 @@ async function generate() {
     const taskId = data.output.task_id;
 
     // Insert into Supabase
-    await supabase.from('generations').insert({
+    await sb.from('generations').insert({
       type: genType,
       prompt: prompt || (genType === 'video' ? 'Animate this image with natural motion' : ''),
       task_id: taskId,
@@ -970,7 +973,7 @@ async function generate() {
 // Polls DashScope for all non-terminal Supabase rows and updates them
 async function backgroundPoll() {
   try {
-    const { data: pending } = await supabase
+    const { data: pending } = await sb
       .from('generations')
       .select('*')
       .in('status', ['PENDING', 'RUNNING']);
@@ -1006,7 +1009,7 @@ async function backgroundPoll() {
           }
         }
 
-        await supabase.from('generations').update(updates).eq('id', row.id);
+        await sb.from('generations').update(updates).eq('id', row.id);
       } catch (e) {
         // Skip individual failures silently
       }
@@ -1023,7 +1026,7 @@ backgroundPoll();
 
 // ——— History ———
 async function loadHistory() {
-  const { data, error } = await supabase
+  const { data, error } = await sb
     .from('generations')
     .select('*')
     .order('created_at', { ascending: false });
