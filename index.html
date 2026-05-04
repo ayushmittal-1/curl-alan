@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Alan - AI Generator</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -389,6 +390,146 @@
     border: 1px solid #27272a;
     background: #000;
   }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: #18181b;
+    border: 1px solid #3f3f46;
+    border-radius: 10px;
+    padding: 12px 20px;
+    color: #e4e4e7;
+    font-size: 13px;
+    font-weight: 500;
+    z-index: 100;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.3s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  /* Generator panel (hides when History is active) */
+  .generator-panel { display: block; }
+  .generator-panel.hidden { display: none; }
+
+  /* History panel */
+  .history-panel { display: none; }
+  .history-panel.visible { display: block; }
+
+  .history-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .history-card {
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-radius: 12px;
+    padding: 14px;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .history-card:hover { border-color: #3f3f46; }
+
+  .history-thumb {
+    width: 72px;
+    height: 72px;
+    border-radius: 8px;
+    object-fit: cover;
+    background: #27272a;
+    flex-shrink: 0;
+  }
+
+  .history-thumb-placeholder {
+    width: 72px;
+    height: 72px;
+    border-radius: 8px;
+    background: #27272a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: #52525b;
+    font-size: 11px;
+    text-align: center;
+  }
+
+  .history-info { flex: 1; min-width: 0; }
+
+  .history-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .history-badge {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+  }
+  .badge-video { background: rgba(139,92,246,0.15); color: #a78bfa; }
+  .badge-image { background: rgba(59,130,246,0.15); color: #60a5fa; }
+
+  .history-status {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .status-pending { color: #fbbf24; }
+  .status-running { color: #60a5fa; }
+  .status-succeeded { color: #4ade80; }
+  .status-failed { color: #f87171; }
+
+  .history-prompt {
+    font-size: 13px;
+    color: #a1a1aa;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 4px;
+  }
+
+  .history-time {
+    font-size: 11px;
+    color: #52525b;
+  }
+
+  .history-empty {
+    text-align: center;
+    padding: 48px 20px;
+    color: #52525b;
+    font-size: 14px;
+  }
+
+  /* Lightbox overlay */
+  .lightbox {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    cursor: pointer;
+  }
+  .lightbox img, .lightbox video {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 12px;
+  }
 </style>
 </head>
 <body>
@@ -400,7 +541,11 @@
   <div class="mode-tabs">
     <button class="mode-tab active" data-mode="video" onclick="switchMode('video')">Image to Video</button>
     <button class="mode-tab" data-mode="image" onclick="switchMode('image')">Text to Image</button>
+    <button class="mode-tab" data-mode="history" onclick="switchMode('history')">History</button>
   </div>
+
+  <!-- Generator panel -->
+  <div class="generator-panel" id="generatorPanel">
 
   <!-- Drop zone (video mode only) -->
   <div class="drop-zone" id="dropZone" data-video-only>
@@ -493,13 +638,34 @@
       <button class="btn-new" id="newBtn" onclick="reset()">New Video</button>
     </div>
   </div>
-</div>
+
+  </div><!-- end generator-panel -->
+
+  <!-- History panel -->
+  <div class="history-panel" id="historyPanel">
+    <div class="history-grid" id="historyGrid">
+      <div class="history-empty">No generations yet. Create one to get started.</div>
+    </div>
+  </div>
+
+</div><!-- end container -->
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
 
 <script>
 const BASE = '';
 
+// Supabase
+const SUPABASE_URL = 'https://qjavmntfobozbyzzysze.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqYXZtbnRmb2JvemJ5enp5c3plIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4NzY3ODAsImV4cCI6MjA5MzQ1Mjc4MH0.Ir9Ah2ZTzNb3vQQQIlt86sDbP_rmcttqaGuwG4Mb7TM';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  db: { schema: 'public' }
+});
+
 let imageUrl = '';
-let currentMode = 'video'; // 'video' or 'image'
+let currentMode = 'video'; // 'video', 'image', or 'history'
+let queueCount = 0;
 
 // DOM
 const dropZone = document.getElementById('dropZone');
@@ -517,6 +683,19 @@ const resultEl = document.getElementById('result');
 const videoPlayer = document.getElementById('videoPlayer');
 const downloadLink = document.getElementById('downloadLink');
 const errorEl = document.getElementById('error');
+const generatorPanel = document.getElementById('generatorPanel');
+const historyPanel = document.getElementById('historyPanel');
+const historyGrid = document.getElementById('historyGrid');
+const toastEl = document.getElementById('toast');
+
+// Toast
+let toastTimer;
+function showToast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3000);
+}
 
 // Drop zone
 dropZone.addEventListener('click', () => {
@@ -536,7 +715,6 @@ dropZone.addEventListener('drop', e => {
   e.preventDefault();
   dropZone.classList.remove('dragover');
 
-  // Check for dropped URL text
   const text = e.dataTransfer.getData('text/plain');
   if (text && (text.startsWith('http://') || text.startsWith('https://'))) {
     setImageUrl(text);
@@ -556,10 +734,7 @@ fileInput.addEventListener('change', () => {
 function uploadToPreview(file) {
   const reader = new FileReader();
   reader.onload = () => {
-    // For local files, we show the preview but need a public URL
-    // We'll use the data URL for preview but prompt user for a public URL
     showPreview(reader.result);
-    // We can't use data URLs with the API - user needs to provide a public URL
     imageUrl = '';
     urlInput.value = '';
     urlInput.placeholder = 'Paste a public URL for this image...';
@@ -627,7 +802,7 @@ urlInput.addEventListener('input', () => {
 function updateBtn() {
   if (currentMode === 'video') {
     generateBtn.disabled = !imageUrl;
-  } else {
+  } else if (currentMode === 'image') {
     generateBtn.disabled = !document.getElementById('prompt').value.trim();
   }
 }
@@ -637,6 +812,17 @@ function switchMode(mode) {
   document.querySelectorAll('.mode-tab').forEach(t => {
     t.classList.toggle('active', t.dataset.mode === mode);
   });
+
+  // Show/hide panels
+  if (mode === 'history') {
+    generatorPanel.classList.add('hidden');
+    historyPanel.classList.add('visible');
+    loadHistory();
+    return;
+  }
+
+  generatorPanel.classList.remove('hidden');
+  historyPanel.classList.remove('visible');
 
   const videoOnly = document.querySelectorAll('[data-video-only]');
   const imageOnly = document.querySelectorAll('[data-image-only]');
@@ -659,7 +845,6 @@ function switchMode(mode) {
     subtitleText.textContent = 'Text to image, powered by Wan2.7';
   }
 
-  // Reset state
   statusEl.classList.remove('visible');
   resultEl.classList.remove('visible');
   hideError();
@@ -689,23 +874,14 @@ function hideError() {
   errorEl.classList.remove('visible');
 }
 
-// Generate
+// Generate — queues the job and immediately frees the UI
 async function generate() {
   hideError();
-  resultEl.classList.remove('visible');
 
   const prompt = document.getElementById('prompt').value.trim();
 
-  generateBtn.disabled = true;
-  statusEl.classList.add('visible');
-  statusSpinner.style.display = 'block';
-  statusCheck.style.display = 'none';
-  statusLabel.textContent = 'Submitting...';
-  statusSub.textContent = '';
-  progressFill.style.width = '5%';
-
   try {
-    let apiUrl, body;
+    let apiUrl, body, genType, modelName, inputImageUrl;
 
     if (currentMode === 'video') {
       const model = document.getElementById('model').value;
@@ -721,6 +897,9 @@ async function generate() {
         },
         parameters: { resolution }
       };
+      genType = 'video';
+      modelName = model;
+      inputImageUrl = imageUrl;
     } else {
       const size = document.getElementById('imgSize').value;
       const n = parseInt(document.getElementById('imgCount').value);
@@ -731,20 +910,19 @@ async function generate() {
         model: 'wan2.7-image-pro',
         input: {
           messages: [
-            {
-              role: 'user',
-              content: [{ text: prompt }]
-            }
+            { role: 'user', content: [{ text: prompt }] }
           ]
         },
-        parameters: {
-          size,
-          n,
-          watermark: false,
-          thinking_mode: true
-        }
+        parameters: { size, n, watermark: false, thinking_mode: true }
       };
+      genType = 'image';
+      modelName = 'wan2.7-image-pro';
+      inputImageUrl = null;
     }
+
+    // Disable button briefly while submitting
+    generateBtn.disabled = true;
+    generateBtn.textContent = 'Submitting...';
 
     const res = await fetch(apiUrl, {
       method: 'POST',
@@ -759,102 +937,177 @@ async function generate() {
     }
 
     const taskId = data.output.task_id;
-    statusLabel.textContent = 'Queued';
-    statusSub.textContent = `Task ${taskId.slice(0, 8)}...`;
-    progressFill.style.width = '10%';
 
-    await poll(taskId);
+    // Insert into Supabase
+    await supabase.from('generations').insert({
+      type: genType,
+      prompt: prompt || (genType === 'video' ? 'Animate this image with natural motion' : ''),
+      task_id: taskId,
+      status: 'PENDING',
+      input_image_url: inputImageUrl,
+      model: modelName
+    });
+
+    queueCount++;
+    showToast(`Queued #${queueCount} — ${genType === 'video' ? 'video' : 'image'} generation`);
+
+    // Reset form for next prompt — don't block the UI
+    if (currentMode === 'image') {
+      document.getElementById('prompt').value = '';
+    }
+    generateBtn.textContent = currentMode === 'video' ? 'Generate Video' : 'Generate Image';
+    generateBtn.disabled = false;
+    updateBtn();
 
   } catch (err) {
     showError(err.message);
-    statusEl.classList.remove('visible');
+    generateBtn.textContent = currentMode === 'video' ? 'Generate Video' : 'Generate Image';
     generateBtn.disabled = false;
   }
 }
 
-async function poll(taskId) {
-  const startTime = Date.now();
+// ——— Background Poller ———
+// Polls DashScope for all non-terminal Supabase rows and updates them
+async function backgroundPoll() {
+  try {
+    const { data: pending } = await supabase
+      .from('generations')
+      .select('*')
+      .in('status', ['PENDING', 'RUNNING']);
 
-  const tick = async () => {
-    try {
-      const res = await fetch(`${BASE}/api/tasks/${taskId}`);
+    if (!pending || pending.length === 0) return;
 
-      const data = await res.json();
-      const s = data.output?.task_status;
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      const mins = Math.floor(elapsed / 60);
-      const secs = elapsed % 60;
-      const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+    for (const row of pending) {
+      try {
+        const res = await fetch(`${BASE}/api/tasks/${row.task_id}`);
+        const taskData = await res.json();
+        const s = taskData.output?.task_status;
 
-      if (s === 'PENDING') {
-        statusLabel.textContent = 'Queued';
-        statusSub.textContent = `Waiting in queue... ${timeStr}`;
-        progressFill.style.width = '15%';
-      } else if (s === 'RUNNING') {
-        statusLabel.textContent = 'Generating';
-        const what = currentMode === 'video' ? 'Rendering video' : 'Generating image';
-        statusSub.textContent = `${what}... ${timeStr}`;
-        const p = Math.min(15 + elapsed * 0.8, 85);
-        progressFill.style.width = p + '%';
-      } else if (s === 'SUCCEEDED') {
-        statusLabel.textContent = 'Done';
-        statusSub.textContent = `Completed in ${timeStr}`;
-        progressFill.style.width = '100%';
-        statusSpinner.style.display = 'none';
-        statusCheck.style.display = 'block';
+        if (!s || s === row.status) continue;
 
-        if (currentMode === 'video') {
-          const videoUrl = data.output.video_url || data.output.results?.[0]?.url;
-          if (videoUrl) {
-            videoPlayer.style.display = '';
-            document.getElementById('imageResults').innerHTML = '';
-            videoPlayer.src = videoUrl;
-            downloadLink.href = videoUrl;
-            downloadLink.download = 'alan-video.mp4';
-            downloadLink.textContent = 'Download';
-            document.getElementById('newBtn').textContent = 'New Video';
-            resultEl.classList.add('visible');
-          }
-        } else {
-          // Image mode: extract images from choices
-          const choices = data.output.choices || [];
-          const images = [];
-          for (const choice of choices) {
-            const content = choice.message?.content || [];
-            for (const item of content) {
-              if (item.image) images.push(item.image);
+        const updates = { status: s };
+
+        if (s === 'SUCCEEDED') {
+          if (row.type === 'video') {
+            updates.result_url = taskData.output.video_url || taskData.output.results?.[0]?.url || null;
+          } else {
+            // Extract first image URL from choices
+            const choices = taskData.output.choices || [];
+            for (const choice of choices) {
+              const content = choice.message?.content || [];
+              for (const item of content) {
+                if (item.image) {
+                  updates.result_url = item.image;
+                  break;
+                }
+              }
+              if (updates.result_url) break;
             }
           }
-
-          if (images.length > 0) {
-            videoPlayer.style.display = 'none';
-            const container = document.getElementById('imageResults');
-            container.innerHTML = images.map(url =>
-              `<img class="generated-img" src="${url}" alt="Generated image">`
-            ).join('');
-            downloadLink.href = images[0];
-            downloadLink.download = 'alan-image.png';
-            downloadLink.textContent = images.length > 1 ? 'Download First' : 'Download';
-            document.getElementById('newBtn').textContent = 'New Image';
-            resultEl.classList.add('visible');
-          }
         }
-        generateBtn.disabled = false;
-        return;
-      } else if (s === 'FAILED') {
-        throw new Error(data.output?.message || 'Video generation failed');
+
+        await supabase.from('generations').update(updates).eq('id', row.id);
+      } catch (e) {
+        // Skip individual failures silently
       }
-
-      setTimeout(tick, 7000);
-    } catch (err) {
-      showError(err.message);
-      statusEl.classList.remove('visible');
-      generateBtn.disabled = false;
     }
-  };
-
-  tick();
+  } catch (e) {
+    // Poller error — ignore, will retry
+  }
 }
+
+// Run poller every 8 seconds
+setInterval(backgroundPoll, 8000);
+// Also run once on load
+backgroundPoll();
+
+// ——— History ———
+async function loadHistory() {
+  const { data, error } = await supabase
+    .from('generations')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error || !data || data.length === 0) {
+    historyGrid.innerHTML = '<div class="history-empty">No generations yet. Create one to get started.</div>';
+    return;
+  }
+
+  historyGrid.innerHTML = data.map(row => {
+    const badgeClass = row.type === 'video' ? 'badge-video' : 'badge-image';
+    const statusClass = 'status-' + row.status.toLowerCase();
+    const promptSnippet = row.prompt ? (row.prompt.length > 60 ? row.prompt.slice(0, 60) + '...' : row.prompt) : 'No prompt';
+    const timeAgo = getTimeAgo(row.created_at);
+
+    let thumbHtml;
+    if (row.status === 'SUCCEEDED' && row.result_url) {
+      if (row.type === 'video') {
+        // Use input image as thumb, or a placeholder
+        const thumbSrc = row.input_image_url || '';
+        thumbHtml = thumbSrc
+          ? `<img class="history-thumb" src="${thumbSrc}" alt="">`
+          : `<div class="history-thumb-placeholder">Video</div>`;
+      } else {
+        thumbHtml = `<img class="history-thumb" src="${row.result_url}" alt="">`;
+      }
+    } else {
+      const label = row.status === 'FAILED' ? 'Failed' : '...';
+      thumbHtml = `<div class="history-thumb-placeholder">${label}</div>`;
+    }
+
+    return `
+      <div class="history-card" onclick="openResult('${row.id}', '${row.type}', '${row.result_url || ''}', '${row.status}')">
+        ${thumbHtml}
+        <div class="history-info">
+          <div class="history-top">
+            <span class="history-badge ${badgeClass}">${row.type}</span>
+            <span class="history-status ${statusClass}">${row.status}</span>
+          </div>
+          <div class="history-prompt">${escapeHtml(promptSnippet)}</div>
+          <div class="history-time">${row.model || ''} · ${timeAgo}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function getTimeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+function openResult(id, type, url, status) {
+  if (status !== 'SUCCEEDED' || !url) return;
+
+  const lb = document.createElement('div');
+  lb.className = 'lightbox';
+  lb.onclick = () => lb.remove();
+
+  if (type === 'video') {
+    lb.innerHTML = `<video src="${url}" controls autoplay loop></video>`;
+  } else {
+    lb.innerHTML = `<img src="${url}" alt="Generated image">`;
+  }
+
+  document.body.appendChild(lb);
+}
+
+// Auto-refresh history when visible
+setInterval(() => {
+  if (currentMode === 'history') loadHistory();
+}, 10000);
 
 function reset() {
   clearImage();
