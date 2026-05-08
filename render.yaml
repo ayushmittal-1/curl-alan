@@ -4,7 +4,7 @@ services:
     name: curl-alan
     repo: https://github.com/ayushmittal-1/curl-alan.git
     branch: master
-    buildCommand: ""
+    buildCommand: "npm install"
     startCommand: node server.js
     plan: free
     envVars: []

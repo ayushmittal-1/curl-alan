@@ -595,6 +595,14 @@
   <!-- Image Settings -->
   <div class="settings-row" id="imageSettings" data-image-only style="display:none;">
     <div class="setting">
+      <label for="imgModel">Model</label>
+      <select id="imgModel">
+        <option value="wan2.7-image-pro">wan2.7-image-pro</option>
+        <option value="qwen-image-2.0-pro">qwen-image-2.0-pro</option>
+        <option value="z-image-turbo">z-image-turbo</option>
+      </select>
+    </div>
+    <div class="setting">
       <label for="imgSize">Size</label>
       <select id="imgSize">
         <option value="2K">2K (2048x2048)</option>
@@ -904,13 +912,14 @@ async function generate() {
       modelName = model;
       inputImageUrl = imageUrl;
     } else {
+      const imgModel = document.getElementById('imgModel').value;
       const size = document.getElementById('imgSize').value;
       const n = parseInt(document.getElementById('imgCount').value);
       if (!prompt) return;
 
       apiUrl = `${BASE}/api/generate-image`;
       body = {
-        model: 'wan2.7-image-pro',
+        model: imgModel,
         input: {
           messages: [
             { role: 'user', content: [{ text: prompt }] }
@@ -919,7 +928,7 @@ async function generate() {
         parameters: { size, n, watermark: false, thinking_mode: true }
       };
       genType = 'image';
-      modelName = 'wan2.7-image-pro';
+      modelName = imgModel;
       inputImageUrl = null;
     }
 
@@ -1010,8 +1019,26 @@ async function backgroundPoll() {
         }
 
         await sb.from('generations').update(updates).eq('id', row.id);
+
+        // Fire-and-forget persist to Supabase Storage when newly SUCCEEDED
+        if (s === 'SUCCEEDED' && updates.result_url) {
+          fetch(`${BASE}/api/persist/${row.id}`, { method: 'POST' }).catch(() => {});
+        }
       } catch (e) {
         // Skip individual failures silently
+      }
+    }
+    // Retry persist for SUCCEEDED rows still missing storage_url
+    const { data: unpersisted } = await sb
+      .from('generations')
+      .select('id')
+      .eq('status', 'SUCCEEDED')
+      .is('storage_url', null)
+      .not('result_url', 'is', null);
+
+    if (unpersisted) {
+      for (const row of unpersisted) {
+        fetch(`${BASE}/api/persist/${row.id}`, { method: 'POST' }).catch(() => {});
       }
     }
   } catch (e) {
@@ -1042,8 +1069,10 @@ async function loadHistory() {
     const promptSnippet = row.prompt ? (row.prompt.length > 60 ? row.prompt.slice(0, 60) + '...' : row.prompt) : 'No prompt';
     const timeAgo = getTimeAgo(row.created_at);
 
+    const displayUrl = row.storage_url || row.result_url || '';
+
     let thumbHtml;
-    if (row.status === 'SUCCEEDED' && row.result_url) {
+    if (row.status === 'SUCCEEDED' && displayUrl) {
       if (row.type === 'video') {
         // Use input image as thumb, or a placeholder
         const thumbSrc = row.input_image_url || '';
@@ -1051,7 +1080,7 @@ async function loadHistory() {
           ? `<img class="history-thumb" src="${thumbSrc}" alt="">`
           : `<div class="history-thumb-placeholder">Video</div>`;
       } else {
-        thumbHtml = `<img class="history-thumb" src="${row.result_url}" alt="">`;
+        thumbHtml = `<img class="history-thumb" src="${displayUrl}" alt="">`;
       }
     } else {
       const label = row.status === 'FAILED' ? 'Failed' : '...';
@@ -1059,7 +1088,7 @@ async function loadHistory() {
     }
 
     return `
-      <div class="history-card" onclick="openResult('${row.id}', '${row.type}', '${row.result_url || ''}', '${row.status}')">
+      <div class="history-card" onclick="openResult('${row.id}', '${row.type}', '${displayUrl}', '${row.status}')">
         ${thumbHtml}
         <div class="history-info">
           <div class="history-top">
