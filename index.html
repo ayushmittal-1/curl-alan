@@ -918,6 +918,7 @@ async function generate() {
       if (!prompt) return;
 
       apiUrl = `${BASE}/api/generate-image`;
+      const isQwen = imgModel.startsWith('qwen-image');
       body = {
         model: imgModel,
         input: {
@@ -925,7 +926,9 @@ async function generate() {
             { role: 'user', content: [{ text: prompt }] }
           ]
         },
-        parameters: { size, n, watermark: false, thinking_mode: true }
+        parameters: isQwen
+          ? { size, watermark: false, prompt_extend: true }
+          : { size, n, watermark: false, thinking_mode: true }
       };
       genType = 'image';
       modelName = imgModel;
@@ -944,24 +947,60 @@ async function generate() {
 
     const data = await res.json();
 
-    if (!res.ok || !data.output?.task_id) {
-      throw new Error(data.message || data.output?.message || 'Failed to submit job');
+    const isQwenSync = currentMode === 'image' && document.getElementById('imgModel').value.startsWith('qwen-image');
+
+    if (isQwenSync) {
+      // Synchronous response — result is returned directly
+      if (!res.ok || !data.output?.choices) {
+        throw new Error(data.message || data.output?.message || 'Failed to generate image');
+      }
+
+      // Extract image URL from choices
+      let resultUrl = null;
+      for (const choice of data.output.choices) {
+        const content = choice.message?.content || [];
+        for (const item of content) {
+          if (item.image) { resultUrl = item.image; break; }
+        }
+        if (resultUrl) break;
+      }
+
+      if (!resultUrl) throw new Error('No image returned');
+
+      // Insert completed row into Supabase
+      await sb.from('generations').insert({
+        type: 'image',
+        prompt: prompt,
+        task_id: data.request_id || 'sync',
+        status: 'SUCCEEDED',
+        result_url: resultUrl,
+        input_image_url: null,
+        model: modelName
+      });
+
+      queueCount++;
+      showToast(`Done #${queueCount} — image generated`);
+
+    } else {
+      // Async response — get task_id and poll later
+      if (!res.ok || !data.output?.task_id) {
+        throw new Error(data.message || data.output?.message || 'Failed to submit job');
+      }
+
+      const taskId = data.output.task_id;
+
+      await sb.from('generations').insert({
+        type: genType,
+        prompt: prompt || (genType === 'video' ? 'Animate this image with natural motion' : ''),
+        task_id: taskId,
+        status: 'PENDING',
+        input_image_url: inputImageUrl,
+        model: modelName
+      });
+
+      queueCount++;
+      showToast(`Queued #${queueCount} — ${genType === 'video' ? 'video' : 'image'} generation`);
     }
-
-    const taskId = data.output.task_id;
-
-    // Insert into Supabase
-    await sb.from('generations').insert({
-      type: genType,
-      prompt: prompt || (genType === 'video' ? 'Animate this image with natural motion' : ''),
-      task_id: taskId,
-      status: 'PENDING',
-      input_image_url: inputImageUrl,
-      model: modelName
-    });
-
-    queueCount++;
-    showToast(`Queued #${queueCount} — ${genType === 'video' ? 'video' : 'image'} generation`);
 
     // Reset form for next prompt — don't block the UI
     if (currentMode === 'image') {

@@ -104,15 +104,26 @@ const server = http.createServer(async (req, res) => {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
+      let parsed;
+      try { parsed = JSON.parse(body); } catch (e) { parsed = {}; }
+      const model = parsed.model || '';
+      // qwen-image models use the multimodal-generation endpoint
+      const apiPath = model.startsWith('qwen-image')
+        ? '/api/v1/services/aigc/multimodal-generation/generation'
+        : '/api/v1/services/aigc/image-generation/generation';
+
+      const isQwen = model.startsWith('qwen-image');
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_KEY}`
+      };
+      if (!isQwen) headers['X-DashScope-Async'] = 'enable';
+
       const opts = {
         hostname: API_HOST,
-        path: '/api/v1/services/aigc/image-generation/generation',
+        path: apiPath,
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${API_KEY}`,
-          'X-DashScope-Async': 'enable'
-        }
+        headers
       };
 
       const proxy = https.request(opts, proxyRes => {
