@@ -162,9 +162,57 @@ const server = http.createServer(async (req, res) => {
     const proxy = https.request(opts, proxyRes => {
       let data = '';
       proxyRes.on('data', chunk => data += chunk);
-      proxyRes.on('end', () => {
+      proxyRes.on('end', async () => {
         res.writeHead(proxyRes.statusCode, { 'Content-Type': 'application/json' });
         res.end(data);
+
+        // Auto-persist: when task succeeds, immediately save to Supabase Storage
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.output?.task_status === 'SUCCEEDED') {
+            const resultUrl = parsed.output.video_url
+              || parsed.output.results?.[0]?.url
+              || null;
+            if (!resultUrl) return;
+
+            // Find the generation row by task_id
+            const { data: row } = await supabaseServer
+              .from('generations')
+              .select('id, type, storage_url')
+              .eq('task_id', taskId)
+              .single();
+
+            if (row && !row.storage_url) {
+              // Update result_url first
+              await supabaseServer
+                .from('generations')
+                .update({ result_url: resultUrl, status: 'SUCCEEDED' })
+                .eq('id', row.id);
+
+              // Download and upload to storage
+              const ext = row.type === 'video' ? 'mp4' : 'png';
+              const storagePath = `${row.id}.${ext}`;
+              const contentType = row.type === 'video' ? 'video/mp4' : 'image/png';
+              const fileBuffer = await downloadFile(resultUrl);
+
+              const { error: uploadErr } = await supabaseServer.storage
+                .from('media')
+                .upload(storagePath, fileBuffer, { contentType, upsert: true });
+
+              if (!uploadErr) {
+                const { data: publicData } = supabaseServer.storage
+                  .from('media')
+                  .getPublicUrl(storagePath);
+                await supabaseServer
+                  .from('generations')
+                  .update({ storage_url: publicData.publicUrl })
+                  .eq('id', row.id);
+              }
+            }
+          }
+        } catch (e) {
+          // Auto-persist failed silently — browser poller is fallback
+        }
       });
     });
 
